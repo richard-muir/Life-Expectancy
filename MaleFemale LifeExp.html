@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+    .subunit.IRL,
+    .subunit.NIR,
+    .subunit.SCT {
+        fill: lightgrey;
+    }
+    
+    div {
+        box-sizing: border-box;
+    }
+    
+    #mapCont {
+        border: 1px solid black;
+        float: left;
+        width: 40%;
+        height: 60vh;
+    }
+    
+    #info {
+        border: 1px solid black;
+        float: right;
+        display: block;
+        width: 60%;
+        height: 60vh;
+    }
+    
+    #LADinfo {
+        height: 10vh;
+    }
+    
+    #charts {
+        height: 40vh;
+    }
+    
+    .axis line,
+    .axis path {
+        fill: none;
+        stroke: #000;
+        shape-rendering: crispEdges;
+    }
+</style>
+
+<body onload="sizeChange()">
+    <div>
+        <div>
+            <div id="mapCont"></div>
+
+            <div id="info">
+                <div>
+                    <h1 id='title'></h1>
+                    <p>Move your mouse over an area to see information about that area; click on it to bring up some charts for a closer look. <br> You can toggle which data you want to see by clicking the buttons below.</p>
+                </div>
+                <div>
+                    <form action="">
+                        <input type="radio" name="gender" value="male" checked='checked'> Male Life Expectancy<br>
+                        <input type="radio" name="gender" value="female"> Female Life Expectancy<br>
+                        <input type="radio" name="gender" value="child"> Child Mortality
+                    </form>
+                    <p id="LADinfo"></p>
+                    <button id="clearTraces">Remove added traces</button>
+                </div>
+            </div>
+        </div>
+        <div id="charts">
+            <iframe id="lineChart" width="100%" height="500" frameborder="0" scrolling="no" src="//plot.ly/~rmuir/229.embed"></iframe>
+        </div>
+    </div>
+
+    <script src="//d3js.org/d3.v3.min.js" charset="utf-8"></script>
+    <script src="//d3js.org/topojson.v1.min.js"></script>
+    <script src="http://d3js.org/queue.v1.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <script>
+        let mapData = [],
+            smallRegionalData = [],
+            regionalData = [],
+            currentPlotlyData = [],
+            layout = [],
+            numberOfTraces = 0,
+            tracesAddedAtIndex = [],
+            markerSymbols = ['circle', 'square', 'diamond', 'cross', 'triangle-up', 'x'],
+            originalTraceIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+        let plot = document.getElementById('lineChart');
+
+
+        const init_graph_obj = (id) => {
+            let obj = {
+                graphContentWindow: document.getElementById(id).contentWindow,
+                id: id
+            };
+            obj.pinger = setInterval(function() {
+                obj.graphContentWindow.postMessage({
+                    task: 'ping'
+                }, 'https://plot.ly');
+            }, 500);
+
+            return obj;
+        };
+
+        let plotGO = init_graph_obj(plot.id);
+        getInitialChart();
+
+        let GORNameLookup = {
+            "E12000001": "North East",
+            "E12000002": "North West",
+            "E12000003": "Yorkshire and The Humber",
+            "E12000004": "East Midlands",
+            "E12000005": "West Midlands",
+            "E12000006": "East of England",
+            "E12000007": "London",
+            "E12000008": "South East",
+            "E12000009": "South West"
+        };
+
+
+
+
+
+        var stateVarLookup = {
+            'male': {
+                'comparisonCountry': 'MLExp Country',
+                'comparisonCountryRate': 'MLExp CountryRate',
+                'VOI': 'Male Life Expectancy 2010-2012',
+                'title': "Life expectancy for males",
+                'chartSRC': '//plot.ly/~rmuir/229.embed',
+                minimumColor: "rgb(37,80,38)",
+                maximumColor: "rgb(150,233,124)",
+                newTraceColor: "rgb(14, 149, 16)",
+                hoverColor: '#C9FFAF',
+                plotlyColours: {
+                    'E12000006': 'rgb(157,199,33)',
+                    'E12000004': 'rgb(104,195,239)',
+                    'E12000007': 'rgb(44,126,169)',
+                    'E12000001': 'rgb(72,191,142)',
+                    'E12000002': 'rgb(19,51,70)',
+                    'E12000008': 'rgb(174,191,138)',
+                    'E12000009': 'rgb(78,72,9)',
+                    'E12000005': 'rgb(9,96,19)',
+                    'E12000003': 'rgb(31,183,0)'
+                }
+            },
+            'female': {
+                'comparisonCountry': 'FLExp Country',
+                'comparisonCountryRate': 'FLExp CountryRate',
+                'VOI': 'Female Life Expectancy 2010-2012',
+                'title': "Life expectancy for females",
+                'chartSRC': '//plot.ly/~rmuir/231.embed',
+                minimumColor: "rgb(110,76,168)",
+                maximumColor: "rgb(211,143,253)",
+                newTraceColor: "rgb(137, 33, 212)",
+                hoverColor: '#FFC2FF',
+                plotlyColours: {
+                    'E12000006': 'rgb(23,50,77)',
+                    'E12000004': 'rgb(29,7,126)',
+                    'E12000007': 'rgb(242,75,199)',
+                    'E12000001': 'rgb(106,127,210)',
+                    'E12000002': 'rgb(67,16,59)',
+                    'E12000008': 'rgb(8,115,148)',
+                    'E12000009': 'rgb(176,87,154)',
+                    'E12000005': 'rgb(248,154,222)',
+                    'E12000003': 'rgb(90,199,220)'
+                }
+            },
+            'child': {
+                'comparisonCountry': 'ChMort Country',
+                'comparisonCountryRate': 'ChMort CountryRate',
+                'VOI': 'Mortality Rate Infants (per 1000)',
+                'title': "Child mortality",
+                minimumColor: "rgb(253,44,59)",
+                maximumColor: "rgb(119,49,41)",
+                hoverColor: '#FF92A1',
+            }
+        };
+
+        let dataState = 'male';
+
+        let radios = document.getElementsByName('gender')
+
+        const deleteTraces = (how) => {
+            console.log(tracesAddedAtIndex.length);
+            if (how === "MFSwitch") {
+                tracesToDelete = originalTraceIndices; //deletes only the GOR ones
+            } else {
+                tracesToDelete = [];
+                for (i = 9; i < 9 + tracesAddedAtIndex.length; i++) {
+                    tracesToDelete.push(i);
+                }
+                tracesAddedAtIndex = [];
+                currentNumberOfTraces = numberOfTraces;
+            }
+
+            plotGO.graphContentWindow.postMessage({
+                task: 'deleteTraces',
+                indices: tracesToDelete
+            }, 'https://plot.ly');
+
+        };
+
+        for (var i = 0, max = radios.length; i < max; i++) {
+            radios[i].onclick = function() {
+                dataState = this.value;
+                console.log(dataState);
+                updateText(dataState);
+                updateMap(dataState);
+                updateLegend(dataState);
+                switchMaleFemale();
+            }
+        }
+        d3.select('#clearTraces').on("click", deleteTraces);
+
+        d3.select(window).on("resize", sizeChange);
+
+        function sizeChange() {
+            console.log(d3.select('#mapCont').style("width"));
+            d3.select("#map").attr("transform", "translate(0, 350) scale(" + parseFloat(d3.select("#mapCont").style("width")) / 900 + ")");
+            d3.select("#map").style("height", (d3.select("#mapCont").style("width") * 0.618));
+        }
+
+        var height = 900;
+        var kwidth = 300,
+            kheight = 140;
+
+
+
+        var svg1 = d3.select("#mapCont").append("svg")
+            .attr("width", "100%")
+            .attr("height", height)
+            .append("g")
+            .attr("id", "map");
+
+        var key = null,
+            legend = null,
+            legendMin = null,
+            legendMax = null,
+            y = null,
+            yAxis = null,
+            legendScale = null,
+            legendText = null;
+
+        function createLegend() {
+
+            key = svg1.append("g")
+                .attr("width", kwidth)
+                .attr("height", kheight)
+                .attr("transform", "translate(500,-400)");
+
+            legend = key.append("defs")
+                .append("svg:linearGradient")
+                .attr("id", "gradient")
+                .attr("x1", "0%")
+                .attr("x2", "100%")
+                .attr("y1", "100%")
+                .attr("y2", "100%")
+                .attr("spreadMethod", "pad");
+
+
+            legendMin = legend.append("stop").attr("offset", "0%")
+                .attr("stop-opacity", 1);
+
+            legendMax = legend.append("stop").attr("offset", "100%")
+                .attr("stop-opacity", 1);
+
+            key.append("rect")
+                .attr("width", kwidth - 100)
+                .attr("height", kheight - 100)
+                .style("fill", "url(#gradient)")
+                .attr("transform", "translate(100,10)");
+
+            y = d3.scale.linear()
+                .range([kwidth - 100, 0]);
+
+            yAxis = d3.svg.axis()
+                .scale(y)
+                .orient("bottom");
+
+            legendScale = key.append("g")
+                .attr("class", "y axis")
+                .attr("transform", "translate(100," + (kheight - 90) + ")")
+                .call(yAxis);;
+
+            legendText = key.append("text")
+                .attr("y", -10)
+                .attr("x", 100)
+                .attr("dy", ".71em")
+                .style("text-anchor", "left");
+        }
+
+        function updateLegend(state) {
+
+            if (state === 'child') {
+                textSuffix = " (Deaths/1000 live births)";
+            } else {
+                textSuffix = " (Years)";
+            }
+
+            console.log(state);
+
+            let minimum = stateVarLookup[state]['minimum'],
+                maximum = stateVarLookup[state]['maximum'],
+                minimumColor = stateVarLookup[state]['minimumColor'],
+                maximumColor = stateVarLookup[state]['maximumColor'],
+                hoverColor = stateVarLookup[state]['hoverColor'],
+                VOI = stateVarLookup[state]['VOI'];
+
+            legendMin.attr("stop-color", minimumColor);
+            legendMax.attr("stop-color", maximumColor);
+
+            y.domain([maximum, minimum]);
+            yAxis.scale(y)
+                .tickValues(y.domain());
+
+            legendScale.call(yAxis);
+
+            legendText.text(stateVarLookup[state]['title'] + textSuffix);
+
+        };
+
+
+
+        function getInitialChart() {
+            window.addEventListener('message', function(e) {
+                var message = e.data;
+                var pinger = plotGO.pinger;
+                if ('pong' in message && message.pong) {
+                    clearInterval(pinger);
+                    plotGO.graphContentWindow.postMessage({
+                        task: 'getAttributes',
+                        attributes: ['data', 'layout']
+                    }, 'https://plot.ly');
+
+                }
+                numberOfTraces = message.response.data.length;
+                currentNumberOfTraces = numberOfTraces;
+                currentPlotlyData = message.response.data;
+                layout = message.response.layout;
+            });
+        };
+
+
+
+        var projection = d3.geo.albers()
+            .center([3, 51.5])
+            .rotate([4.4, 0])
+            .parallels([50, 60])
+            .scale(9000)
+            //.translate([width / 2, height / 2])
+        ;
+
+        var cornwall = d3.set(['E06000052', 'E06000053']),
+            hackney = d3.set(['E09000001', 'E09000012']);
+
+        var path = d3.geo.path().projection(projection);
+
+        //.defer(d3.json, "http://richard-muir.com/data/lifeExp/uk.json")
+        //.defer(d3.json, "http://richard-muir.com/data/lifeExp/topo_ladall.json")
+        //.defer(d3.json, "http://richard-muir.com/data/lifeExp/headlineData.json")
+        //.defer(d3.json, "http://richard-muir.com/data/lifeExp/LADMFLifeExp.json")
+        //.defer(d3.json, "http://richard-muir.com/data/lifeExp/regionalData.json")
+
+        queue()
+            .defer(d3.json, "uk.json")
+            .defer(d3.json, "topo_ladall.json")
+            .defer(d3.json, "headlineData.json")
+            .defer(d3.json, "LADMFLifeExp.json")
+            .defer(d3.json, "regionalData.json")
+            .await(coalesceData);
+
+        function coalesceData(error, ukCountries, ukRegions, headLineData, smallregions, largeregions) {
+
+            mapData = headLineData;
+            smallRegionalData = smallregions;
+            regionalData = largeregions;
+
+            //gets the maximum values for use in the colour scale
+            for (var i in stateVarLookup) {
+                stateVarLookup[i]['minimum'] = d3.min(mapData, function(d) {
+                    return d[stateVarLookup[i]['VOI']];
+                });
+                stateVarLookup[i]['maximum'] = d3.max(mapData, function(d) {
+                    return d[stateVarLookup[i]['VOI']];
+                });
+            }
+
+            createLegend();
+            makeCountryMap(ukCountries);
+            makeRegionMap(ukRegions);
+
+
+
+        }
+
+
+        function makeCountryMap(countryData) {
+            svg1.selectAll(".subunit")
+                .data(topojson.feature(countryData, countryData.objects.subunits).features.filter(function(d) {
+                    console.log(d.id);
+                    return d.id === 'IRL' || d.id === 'NIR' || d.id === 'SCT';
+                }))
+                .enter().append("path")
+                .attr("class", function(d) {
+                    return "subunit " + d.id;
+                })
+                .attr("d", path);
+
+        }
+
+
+        function makeRegionMap(regionData) {
+            svg1.selectAll(".subunit")
+                .data(topojson.feature(regionData, regionData.objects.lad).features.filter(function(d) {
+                    return !cornwall.has(d.id) && !hackney.has(d.id) && d.id.substring(0, 1) !== 'S';
+                }))
+                .enter().append("path")
+                .attr("class", function(d) {
+                    console.log(d.id.slice(0, 3));
+                    return `subunit ${d.id[0]} ${d.id.slice(0, 3)}`;
+                })
+                .attr("d", path)
+                .attr("stroke", "#333")
+                .attr("stroke-width", 0.75);
+
+            var cornwallScilly = topojson.merge(regionData, regionData.objects.lad.geometries.filter(function(d) {
+                return cornwall.has(d.id);
+            }))
+            cornwallScilly.id = 'E06000052';
+            cornwallScilly.properties = {
+                'LAD13NM': 'Cornwall and Isles of Scilly'
+            };
+
+            var hackneyLondon = topojson.merge(regionData, regionData.objects.lad.geometries.filter(function(d) {
+                return hackney.has(d.id);
+            }))
+            hackneyLondon.id = 'E09000001';
+            hackneyLondon.properties = {
+                'LAD13NM': 'Hackney and City of London'
+            };
+
+
+            svg1.append("path")
+                .datum(cornwallScilly)
+                .attr("class", "subunit E")
+                .attr("d", path)
+                .attr("stroke", "#333")
+                .attr("stroke-width", 0.75);
+            svg1.append("path")
+                .datum(hackneyLondon)
+                .attr("class", "subunit E")
+                .attr("d", path)
+                .attr("stroke", "#333")
+                .attr("stroke-width", 0.75);
+
+            updateMap(dataState);
+            updateLegend(dataState);
+
+        }
+
+
+
+        function updateMap(state) {
+            console.log(state)
+
+            let minimum = stateVarLookup[state]['minimum'],
+                maximum = stateVarLookup[state]['maximum'],
+                minimumColor = stateVarLookup[state]['minimumColor'],
+                maximumColor = stateVarLookup[state]['maximumColor'],
+                hoverColor = stateVarLookup[state]['hoverColor'],
+                VOI = stateVarLookup[state]['VOI'];
+
+            console.log(hoverColor);
+
+            var color = d3.scale.linear().domain([minimum, maximum]).range([minimumColor, maximumColor]);
+
+
+            svg1.selectAll(".subunit.E")
+                .style("fill", function(d) {
+                    return color(mapData.filter(function(e) {
+                        return e.LAD13CD === d.id;
+                    })[0][VOI])
+                });
+            svg1.selectAll(".subunit.W")
+                .style("fill", function(d) {
+                    return color(mapData.filter(function(e) {
+                        return e.LAD13CD === d.id;
+                    })[0][VOI])
+                });
+
+
+            updateText(state);
+
+
+            d3.selectAll(".subunit.E").on({
+                "mouseover": function(d) {
+                    let compRec = (mapData.filter(function(e) {
+                        return e['LAD13CD'] === d.id;
+                    })[0]);
+                    d3.select("#place").html(d.properties.LAD13NM);
+                    d3.select("#comparison").html(compRec[stateVarLookup[state]['comparisonCountry']]);
+                    d3.select('#VOI').html(compRec[stateVarLookup[state]['VOI']]);
+                    d3.select('#compVOI').html(compRec[stateVarLookup[state]['comparisonCountryRate']]);
+                    d3.select(this).style("fill", hoverColor);
+
+                },
+                "mouseout": function(d) {
+                    let colour = color(mapData.filter(function(e) {
+                        return e.LAD13CD === d.id;
+                    })[0][VOI]);
+                    d3.select(this).style("fill", colour);
+                },
+                "click": function(d) {
+                    LADData = smallRegionalData.filter(function(e) {
+                        return e['Area code'] === d.id & e['sex'] === dataState;
+                    })[0];
+                    prepareForSubmitToPlotly(LADData);
+                }
+            });
+
+            d3.selectAll(".subunit.W").on({
+                "mouseover": function(d) {
+                    let compRec = (mapData.filter(function(e) {
+                        return e['LAD13CD'] === d.id;
+                    })[0]);
+                    d3.select("#place").html(d.properties.LAD13NM);
+                    d3.select("#comparison").html(compRec[stateVarLookup[state]['comparisonCountry']]);
+                    d3.select('#VOI').html(compRec[stateVarLookup[state]['VOI']]);
+                    d3.select('#compVOI').html(compRec[stateVarLookup[state]['comparisonCountryRate']]);
+                    console.log(d3.select(this));
+                    d3.select(this).style("fill", hoverColor);
+                },
+                "mouseout": function(d) {
+                    let colour = color(mapData.filter(function(e) {
+                        return e.LAD13CD === d.id;
+                    })[0][VOI]);
+                    d3.select(this).style("fill", colour);
+                },
+                "click": function(d) {
+                    LADData = smallRegionalData.filter(function(e) {
+                        return e['Area code'] === d.id & e['sex'] === dataState;
+                    })[0];
+                    prepareForSubmitToPlotly(LADData);
+                }
+            });
+
+            var legend = d3.select('#gradient');
+
+
+        }
+
+        function isInteger(x) {
+            return x % 1 === 0;
+        }
+
+        function updateText(state) {
+            console.log(state)
+            texts = {
+                'child': "<span id='place'></span> has <span id='VOI'></span> deaths per 1000 live births. It is most similar to <span id='comparison'></span> which has <span id='compVOI'></span> deaths per 1000 live births.<br><br>Click for more info.",
+                'male': "Males in <span id='place'></span> can expect to live <span id='VOI'></span> years on average. This is most similar to <span id='comparison'></span> where males can expect to live <span id='compVOI'></span> years.<br><br>Click for more info.",
+                'female': "Females in <span id='place'></span> can expect to live <span id='VOI'></span> years on average. This is most similar to <span id='comparison'></span> where females can expect to live <span id='compVOI'></span> years.<br><br>Click for more info.",
+            }
+            d3.select('#title').html(stateVarLookup[state]['title']);
+            d3.select('#LADinfo').html(texts[state]);
+        }
+
+        const prepareForSubmitToPlotly = (data) => {
+            let vals = getXAndYVals(data),
+                xValues = vals[0],
+                yValues = vals[1];
+            console.log(data);
+
+            //fix marker symbol
+            markerSymbolInd = Math.floor((currentNumberOfTraces - numberOfTraces) / 6) + 1;
+            console.log("ceil", markerSymbolInd);
+            console.log(currentNumberOfTraces);
+            console.log(numberOfTraces);
+            console.log(currentNumberOfTraces - ((currentNumberOfTraces - numberOfTraces) / markerSymbolInd));
+
+            newTrace = [{
+                'x': xValues,
+                'y': yValues,
+                'name': splitAndCapitalise(data.AreaRN),
+                'type': 'scatter',
+                'mode': 'lines+markers',
+                'line': {
+                    'width': 2
+                },
+                'marker': {
+                    'size': 6,
+                    'opacity': 0.8,
+                    'color': stateVarLookup[dataState].newTraceColor,
+                    'symbol': markerSymbols[currentNumberOfTraces - numberOfTraces],
+                    'line': {
+                        'width': 1.25,
+                        'color': '#333'
+                    },
+                },
+                'hoverinfo': 'name+y+x',
+                'opacity': 0.9,
+            }];
+            console.log(newTrace);
+
+            tracesAddedAtIndex.push(currentNumberOfTraces);
+            currentNumberOfTraces += 1;
+
+            submitDataToPlotly(newTrace, [-1]);
+            if (!compareArrays(layout.yaxis.range, determineMinMax(newTrace))) {
+                layout.yaxis.range = determineMinMax(newTrace);
+                submitLayoutToPlotly(layout);
+            };
+
+        }
+
+        const submitDataToPlotly = (traces, indices) => {
+            plotGO.graphContentWindow.postMessage({
+                task: 'addTraces',
+                traces: traces,
+                newIndices: indices
+            }, 'https://plot.ly');
+        };
+        const submitLayoutToPlotly = (layoutObject) => {
+            plotGO.graphContentWindow.postMessage({
+                task: 'relayout',
+                update: layoutObject
+            }, 'https://plot.ly');
+        }
+        const determineMinMax = (data) => {
+            let minimum = layout.yaxis.range[0],
+                maximum = layout.yaxis.range[1];
+
+            let newMax = d3.max(data, function(d) {
+                return d3.max(d.y);
+            });
+            let newMin = d3.min(data, function(d) {
+                return d3.min(d.y);
+            });
+            diff = newMax - newMin;
+            newMin = newMin - (diff * 0.05);
+            newMax = newMax + (diff * 0.05);
+            return [Math.min(minimum, newMin), Math.max(maximum, newMax)];
+        };
+        const compareArrays = (a1, a2) => {
+            return (a1.length == a2.length) && a1.every(function(element, index) {
+                return element === a2[index];
+            });
+        };
+
+        const getXAndYVals = (dataIn) => {
+            let xValues = [],
+                yValues = [];
+            for (let k in Object.keys(dataIn)) {
+                key = Object.keys(dataIn)[k]
+                if (isInteger(key.slice(0, 4))) {
+                    xValues.push(key);
+                    yValues.push(dataIn[key]);
+                }
+            }
+            return [xValues, yValues];
+        };
+
+        const splitAndCapitalise = (str) => {
+            str = str.replace(" UA", "");
+            str = str.split("/")[0];
+            str = str.toLowerCase();
+            str = str.split(" ")
+            for (var i = 0; i < str.length; i++) {
+                str[i] = str[i].charAt(0).toUpperCase() + str[i].slice(1);
+            }
+            return str.join(" ");
+
+        }
+
+        const switchMaleFemale = () => {
+            console.log(dataState);
+            let filteredData = regionalData.filter(function(d) {
+                return d.sex === dataState;
+            });
+
+            sexTraces = []
+            for (let d in filteredData) {
+                let region = filteredData[d];
+                let colour = stateVarLookup[dataState].plotlyColours[region['Area code']];
+
+                let vals = getXAndYVals(region),
+                    xVals = vals[0],
+                    yVals = vals[1];
+
+                console.log(xVals, yVals);
+
+                sexTraces.push({
+                    "hoverinfo": "text+x+y",
+                    "line": {
+                        "color": colour,
+                        "width": 1,
+                    },
+                    "marker": {
+                        "color": colour,
+                        "opacity": 1,
+                        "size": 4,
+                        "symbol": "circle",
+                    },
+                    "mode": "lines+markers",
+                    "name": GORNameLookup[region['Area code']],
+                    "opacity": 0.8,
+                    "text": GORNameLookup[region['Area code']],
+                    "type": "scatter",
+                    "x": xVals,
+                    "y": yVals
+                });
+            }
+            deleteTraces('MFSwitch');
+            submitDataToPlotly(sexTraces, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+            layout.title = `Life expectancy at birth for UK ${dataState}s`;
+            if (!compareArrays(layout.yaxis.range, determineMinMax(sexTraces))) {
+                layout.yaxis.range = determineMinMax(sexTraces);
+                submitLayoutToPlotly(layout);
+            };
+
+        }
+    </script>

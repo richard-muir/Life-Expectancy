@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <title>Is that it?</title>
+
+
+        <link href='http://fonts.googleapis.com/css?family=Droid+Serif' rel='stylesheet' type='text/css'>
+        <link href='http://fonts.googleapis.com/css?family=Droid+Sans' rel='stylesheet' type='text/css'>
+        <!--OPTION 3-->
+        <link href='https://fonts.googleapis.com/css?family=Roboto:500' rel='stylesheet' type='text/css'>
+
+	<!--d3 and Plotly code-->
+	<script src="//d3js.org/d3.v3.min.js" charset="utf-8"></script>
+    <script src="//d3js.org/topojson.v1.min.js"></script>
+    <script src="http://d3js.org/queue.v1.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+	<link rel="stylesheet" href="css/dataviz-style.css">
+
+    <style>
+        html, body{
+            height: 100%;
+            width: 100%;
+        }
+        #mapCont{
+            width: 35%;
+            height: 100%;
+            float: left;
+        }
+        #chartCont{
+            width: 65%;
+            height: 100%;
+            float: right;
+        }
+        #info{
+            width:100%;
+            height: 30%;
+        }
+        #charts{
+            width: 100%;
+            height: 70%;
+        }
+        #frameCont{
+            width: 100%;
+            height: 90%;
+        }
+        #lineChart{
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+
+	
+    </head>
+    <body>
+		
+		<div id="mapCont"></div>
+        <div id="chartCont">
+            <div id="info" >
+                <div>
+                    <h3 id='title'></h3>
+                    <p class="descriptionText">You can toggle which data you want to see by clicking the buttons below.</p>
+                </div>
+                <form action="">
+                    <input type="radio" name="gender" value="male" checked='checked'> Male Life Expectancy
+                    <input type="radio" name="gender" value="female"> Female Life Expectancy<br><br>
+                    <button id="clearTraces" type="button">Remove added regions</button>
+                </form>
+            
+                <p class="descriptionText" id="LADinfo"></p><br>
+                
+            </div>
+
+            <div id="charts"> 
+                <!--width="100%" height="90%"-->
+                <div id="frameCont">
+                    <iframe id="lineChart" autosize=True link=False frameborder="0" scrolling="no" src="//plot.ly/~rmuir/249.embed"></iframe>
+                </div> 
+            </div>
+        </div>
+			
+    <script src="js/lifeExpectancy.js"></script>
+    </body>
+</html>
